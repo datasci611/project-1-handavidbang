@@ -1,0 +1,163 @@
+---
+title: "Project 1"
+author: "David Bang"
+date: "9/23/2018"
+output: html_document
+---
+
+```{r, include = FALSE}
+#Loading the data and relevant packages 
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(tidyverse)
+library(reshape2)
+library(waffle)
+library(titanic)
+library(RColorBrewer)
+data("economics")
+data("USArrests")
+data("txhousing")
+```
+
+#Economics Data Set
+```{r include = FALSE}
+#Creating a few columns 
+economics <- as_tibble(economics)
+economics['year'] = year(economics$date)
+economics['month'] = month(economics$date)
+
+
+seasons <- c(
+        "01" = "Winter", "02" = "Winter",
+        "03" = "Spring", "04" = "Spring", "05" = "Spring",
+        "06" = "Summer", "07" = "Summer", "08" = "Summer",
+        "09" = "Fall", "10" = "Fall", "11" = "Fall",
+        "12" = "Winter"
+)
+economics['season'] <- seasons[ 1 + as.POSIXlt(economics$date)$mon]
+economics['unemprate'] <- (economics['unemploy']/economics['pop'])*100
+```
+
+I want to check out how savings rates have changed over the years in the U.S.
+```{r}
+
+ggplot(economics, mapping = aes(x = year, y = psavert, colour = season)) +
+  geom_line() + labs(title = "Savings rate over the years by season", ylab = "% savings rate", xlab= "Year")
+```
+
+This graph is difficult to analyze, but it does look like spring has noticable changes compared to the general trend. I suspect savings rate to be higher during summer and lower in winter.
+
+I am simply hypothesizing that in the days when the economy was highly dependent on agriculture, that there was little work during the winter hence no income to save. I'm curious to see if these savings habits may have trickled to modern society.
+
+
+From the graph, we see that the savings rates between summer and winter are fairly similar, although there's a huge peak in 2012-12-01. I'd suspect incorrect data entry or that a significant portion of the U.S. believed the Mayan apocalypse was near hence an economic collapse.
+```{r}
+ggplot(economics %>% filter(season %in% c('Summer', 'Winter')), mapping = aes(x = year, y = psavert, colour = season)) +
+  geom_line() + labs(title = "Savings rate over the years by Winter & Summer", ylab = "% savings rate", xlab= "Year")
+```
+
+Next, I want to see if there is a positive relationship between unemployment rate and the savings rate. I suspect a strong positive relationship since people can only save if they have money. 
+```{r}
+df <- economics %>%
+  select(date, psavert, unemprate) %>%
+  gather(key = "variable", value = "value", -date)
+
+ggplot(df, aes(x = date, y = value)) + 
+  geom_line(aes(color = variable), size = 1) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+  theme_minimal() + labs(title = "Savings and Unemployment rate over time", ylab = "%", xlab = "Year")
+
+```
+
+Quite frankly, it's difficult to decipher if there is a significant relationship between these two. I'd suspect that these two would be strongly correlated positively, but judging from the graph it's hard to tell. I'll simply calculate the correlation.
+
+```{r}
+cor(economics['psavert'], economics['unemprate'])
+```
+
+It turns out that there is a very weak negative correlation between the savings rate and the unemployment rate, strange. 
+
+#USArrests 
+This data is challenging since there isn't a percentage involved nor total values available. Subsequently, this could lead to problems since higher populations leads to more crimes in general. Percents aren't readily available.
+```{r}
+#Assigning a new variable to the USArrests dataset 
+arrests <- USArrests
+
+#Change the shape of the data to help with visualization
+df <- arrests %>%
+     select(Murder, Rape, Assault, UrbanPop) %>%
+     gather(key = "variable", value = "value", -UrbanPop)
+
+ggplot(df, aes(x = UrbanPop, y = value)) + 
+  geom_line(aes(color = variable), size = 1) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800", "#FF9999")) +
+  theme_minimal() + labs(title = "Crimes per 100,000 by Urban Population %", ylab = "Crimes per 100,000", xlab = "Urban Pop. (%)")
+```
+
+The graph above does not convey much information. Again, it gives percent of urban population and not the total. The way in which urban population is define can be problematic since it may not be a standard definition across the states. Again, I'd prefer if total values were given. 
+
+Now, I want to check out if there are strong correlations between the crimes. Surprisingly, urban population percent is not highly correlated with the various crimes especially murder. I can assume that not having a lot of "witnesses" may embolden the criminal. Assault is highly correlated with murder. It could be the case that the same victims have been charged with both murder and assault hence double counting. 
+```{r}
+cormat <- round(cor(arrests),2)
+melted_cormat <- melt(cormat)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + labs(title = "Correlation heatmap", colour = "Pearson Correlation")
+```
+
+#Titanic
+
+I'll be using the dataset concerning the survival of each passenger on the Titanic. In the movie classic, there's a scene in which women and children were placed on the lifeboats first. I'd assume that a greater proportion of men perished. Looking at the bar charts, indeed more women survived.
+```{r}
+titanic <- as_tibble(titanic_train)
+
+#Create percent based-variables 
+
+#Setting up data in a nice format for future reference
+t_sex <- titanic %>% select(Survived, Sex) %>% table() %>% prop.table() %>% as_data_frame() %>% mutate(n = n*100)
+
+#Setting up data in a nice format for future reference
+t_pclass <- titanic %>% select(Survived, Pclass) %>% table() %>% prop.table() %>% as_data_frame() %>% mutate(n = n*100)
+
+#Seeing the proportion of gender in survival
+ggplot(titanic) + 
+  geom_bar(mapping = aes(x = factor(Survived), y = ..prop.., group = Sex, fill = Sex)) +
+        labs(title = "Proportion of Survived by Sex", y = "Proportion", x = "Survived(No = 0, Yes = 1)")
+```
+
+Next, I want to check if economic class had a significant impact on survival. The 1st class, 2nd class, and 3rd class ticket corresponds to the richest, rich, poor. I'd assume that there is no real difference. I find it difficult to believe they'll announce "1st class come first". However, surprisingly, there is a pattern of survival rates based on economic status. Perhaps the 3rd class rooms are at the bottom of the boat?
+```{r}
+#Seeing the proportion of class in survival
+ggplot(titanic) + 
+  geom_bar(mapping = aes(x = factor(Survived), y = ..prop.., group = factor(Pclass), fill = Pclass)) +
+        labs(title = "Proportion of Survived by Class", y = "Proportion", x = "Survived(No = 0, Yes = 1)")
+```
+
+#Housing Sales tax in Texas
+
+I will be checking out the housing tax data in Texas. From the pie chart, Houston, Austin, and Dallas take home the cake in houses sold. I suspect the reason would be that these are growing cities as a bunch of tech companies are starting up headquarters there, especially in Austin. 
+```{r}
+txpie <- txhousing %>%
+        group_by(city) %>%
+        summarise(volume = sum(volume, na.rm = TRUE), 
+                  sales = sum(sales, na.rm = TRUE), 
+                  listings = sum(listings, na.rm = TRUE)) %>%
+        mutate(vol_share = (volume / sum(volume, na.rm = TRUE) * 100.0), 
+               sales_share = (sales / sum(sales, na.rm = TRUE) * 100.0),
+               list_share = (listings / sum(listings, na.rm = TRUE) * 100.0)) %>%
+        arrange(desc(volume))
+
+#Piechart 
+bp <- ggplot(txpie[c(1:10),], aes(x="", y= vol_share, fill=city)) +
+  geom_bar(width = 1, stat = "identity") + labs(title = "Volume share by city", x= "", y = "Volume Share")
+pie <- bp + coord_polar("y")
+pie
+```
+```{r include = FALSE}
+#Generate color list for waffle
+n <- 27
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))[c(1:27)]
+#Waffle chart
+#waffle(txpie[['vol_share']], color = col_vector, label = txpie[['city']])
+```
